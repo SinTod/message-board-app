@@ -2,6 +2,11 @@ import datetime
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 
+from flask_wtf import FlaskForm as Form
+from wtforms.fields import StringField
+from wtforms.validators import Required, Length
+from werkzeug.datastructures import MultiDict
+
 app = Flask(__name__)
 app.config.update(dict(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
@@ -25,6 +30,11 @@ class Message(db.Model):
         }
 
 
+class MessageForm(Form):
+    name = StringField(validators=[Required(message=u'请输入您的姓名'), Length(1, 64, message=u'姓名长度要在1-10个字符之间')])
+    text = StringField(validators=[Required(message=u'请输入您的留言'), Length(10, 1000, message=u'留言长度要在10~1000字符之间')])
+
+
 @app.route('/api/messages', methods=['GET'])
 def get_messages():
     messages = Message.query.order_by('created_at desc').all()
@@ -33,11 +43,15 @@ def get_messages():
 
 @app.route('/api/messages', methods=['POST'])
 def create_message():
-    data = request.get_json()
-    msg = Message(name=data['name'], text=data['text'])
+    formdata = MultiDict(request.get_json())
+    form = MessageForm(formdata=formdata, obj=None, csrf_enabled=False)
+    if not form.validate():
+        return jsonify(ok=False, errors=form.errors), 422
+    # data = request.get_json()
+    msg = Message(name=formdata['name'], text=formdata['text'])
     db.session.add(msg)
     db.session.commit()
-    return jsonify(ok=True)
+    return jsonify(ok=True), 201
 
 
 if __name__ == '__main__':
