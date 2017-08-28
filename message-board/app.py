@@ -1,10 +1,13 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import datetime
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 
 from flask_wtf import FlaskForm as Form
 from wtforms.fields import StringField
-from wtforms.validators import Required, Length
+from wtforms.validators import Required, Length, ValidationError
 from werkzeug.datastructures import MultiDict
 
 app = Flask(__name__)
@@ -31,8 +34,18 @@ class Message(db.Model):
 
 
 class MessageForm(Form):
-    name = StringField(validators=[Required(message=u'请输入您的姓名'), Length(1, 64, message=u'姓名长度要在1-10个字符之间')])
-    text = StringField(validators=[Required(message=u'请输入您的留言'), Length(10, 1000, message=u'留言长度要在10~1000字符之间')])
+    name = StringField(validators=[Required(message=u'请输入您的姓名'), Length(1, 10, message=u'姓名长度要在1-10个字符之间')])
+    text = StringField(validators=[Required(message=u'请输入您的留言'), Length(2, 1000, message=u'留言长度要在2~1000字符之间')])
+
+    def validate_name(self, field):
+        if Message.query.filter_by(name=field.data).first():
+            raise ValidationError(u'名称已存在')
+
+    def creat_message(self):
+        msg = Message(name=self.name.data, text=self.text.data)
+        db.session.add(msg)
+        db.session.commit()
+        return msg
 
 
 @app.route('/api/messages', methods=['GET'])
@@ -45,13 +58,11 @@ def get_messages():
 def create_message():
     formdata = MultiDict(request.get_json())
     form = MessageForm(formdata=formdata, obj=None, csrf_enabled=False)
+
     if not form.validate():
-        return jsonify(ok=False, errors=form.errors), 422
-    # data = request.get_json()
-    msg = Message(name=formdata['name'], text=formdata['text'])
-    db.session.add(msg)
-    db.session.commit()
-    return jsonify(ok=True), 201
+        return jsonify(form.errors), 422
+    msg = form.creat_message()
+    return jsonify(msg.to_dict()), 201
 
 
 if __name__ == '__main__':
